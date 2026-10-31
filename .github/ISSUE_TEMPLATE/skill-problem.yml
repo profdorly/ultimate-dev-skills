@@ -1,0 +1,40 @@
+name: Skill problem
+description: A skill got in the way, let something slip, or quotes a command that no longer works.
+labels: ["skill-problem"]
+body:
+  - type: dropdown
+    id: skill
+    attributes:
+      label: Skill
+      options:
+        - git-workflow
+        - pull-requests
+        - database-migrations
+        - dependencies
+        - shell-scripts
+        - debugging
+        - testing
+        - code-review
+        - secure-coding
+        - install or README
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and version
+      placeholder: Claude Code 2.1.316, Codex CLI 0.166.0, Kiro CLI 2.37.0
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool and version involved, if any
+      placeholder: pnpm 12.10.1, Postgres 18.6, gh 2.103.3
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you asked, what the agent did, and what you expected instead. Leave out secrets and private data.
+    validations:
+      required: true
