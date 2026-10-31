@@ -1,0 +1,13 @@
+{
+  "name": "ultimate-dev-skills",
+  "version": "0.1.0",
+  "description": "Nine skills that make coding agents ask before hard-to-undo actions and use exact, current commands: git-workflow, pull-requests, database-migrations, dependencies, shell-scripts, debugging, testing, code-review, secure-coding.",
+  "author": {
+    "name": "profdorly",
+    "url": "https://github.com/profdorly"
+  },
+  "homepage": "https://github.com/profdorly/ultimate-dev-skills",
+  "repository": "https://github.com/profdorly/ultimate-dev-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

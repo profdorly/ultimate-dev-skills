@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "ultimate-dev-skills",
+  "description": "Agent Skills for the work where a coding agent's mistake is expensive: git, pull requests and CI, database migrations, dependencies, shell scripts, debugging, testing, code review, and secure coding.",
+  "owner": {
+    "name": "profdorly",
+    "url": "https://github.com/profdorly"
+  },
+  "plugins": [
+    {
+      "name": "ultimate-dev-skills",
+      "version": "0.1.0",
+      "source": "./",
+      "description": "Nine skills that make coding agents ask before hard-to-undo actions and use exact, current commands: git-workflow, pull-requests, database-migrations, dependencies, shell-scripts, debugging, testing, code-review, secure-coding.",
+      "homepage": "https://github.com/profdorly/ultimate-dev-skills",
+      "license": "MIT",
+      "keywords": ["skills", "git", "pull-requests", "ci", "database-migrations", "dependencies", "supply-chain", "shell", "debugging", "testing", "code-review", "security"]
+    }
+  ]
+}
