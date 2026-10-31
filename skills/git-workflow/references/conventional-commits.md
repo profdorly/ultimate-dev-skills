@@ -75,7 +75,13 @@ This is a summary of [Conventional Commits 1.0.0](https://www.conventionalcommit
 
 ## Reverts
 
-The spec's FAQ recommends the `revert` type with a footer referencing the reverted commits. Git's default `Revert "..."` message doesn't follow that format, so:
+Require a raw, configuration-independent clean-index check before `--no-commit`:
+
+```bash
+git diff --cached --quiet --no-ext-diff --no-textconv --ignore-submodules=none --
+```
+
+Exit 0 means clean; exit 1 means staged changes, so stop; any larger exit code means the check failed, so stop. The plain form can be fooled by textconv, external diff, or `diff.ignoreSubmodules=all`. Without this guard, staged user work would be swept into the revert commit. A merge commit also requires choosing a mainline parent with `-m`; stop and ask rather than guessing which parent is the mainline.
 
 ```bash
 git revert --no-commit <sha>
@@ -89,7 +95,9 @@ Refs: <sha>
 EOF
 ```
 
-Both commands need user approval, like any commit. To revert several commits in one go, pass them all to `git revert --no-commit` and list them all in `Refs:`. If the revert conflicts, resolve it as in [conflicts.md](conflicts.md), then run the same `git commit -F`.
+Both commands need user approval. If the revert conflicts, resolve it as in [conflicts.md](conflicts.md), then make the same custom commit instead of running `git revert --continue` (which would use Git's default message).
+
+Revert several commits **one at a time, newest first**, and commit each revert before starting the next. Do not pass all SHAs to one `git revert --no-commit`: if one conflicts, later SHAs may never be applied while a premature commit and short status check can look successful. One revert per commit also keeps the history atomic and makes each `Refs:` accurate.
 
 ## Mapping commits to Semantic Versioning
 

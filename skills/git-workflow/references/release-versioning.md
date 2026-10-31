@@ -36,11 +36,11 @@ Other details:
 ## 2. Find the last release and the tag format
 
 ```bash
-git --no-pager tag --list --sort=-v:refname | head -10   # the tag format in use
-git describe --tags --abbrev=0 --match 'v[0-9]*'          # nearest release tag behind HEAD; adjust the pattern to the format
+git --no-pager tag --list --sort=-v:refname | head -10
+git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude 'v*-*'
 ```
 
-Match what you see. If tags look like `v1.2.3`, use the `v` prefix; if they're bare `1.2.3`, don't. In monorepos, follow package-scoped tags such as `pkg-name@1.2.3`. If `git describe` finds nothing, this is the first release.
+The example finds the nearest stable `vX.Y.Z` ancestor and excludes tags such as `v1.4.0-rc.1`. Adjust both patterns to the project's format. If tags are bare (`1.2.3`), omit the `v`; in a monorepo, match the package-scoped form such as `pkg-name@1.2.3` and make the exclusion target only that tag's pre-release suffix rather than every hyphen in the package name. If the project is intentionally continuing a pre-release line, use that pre-release as the base instead of excluding it. If `git describe` finds nothing, this is the first release.
 
 ## 3. Decide the bump
 
@@ -62,11 +62,11 @@ Tags need approval. Use annotated tags, which carry an author, a date, and a mes
 
 ```bash
 git tag -a v1.4.0 -m "Release 1.4.0"
-git push origin <branch>          # the release commit reaches the remote branch first
+git push origin <branch>          # release commit reaches the remote branch first
 git push origin v1.4.0            # then only this tag, not --tags
 ```
 
-`git push --atomic origin <branch> v1.4.0` does both in one step: if the host rejects either ref, neither is updated.
+Execute every network command above with SKILL.md rule 6's non-interactive environment. `git push --atomic origin <branch> v1.4.0` does both in one step: if the host rejects either ref, neither is updated.
 
 - Never move, delete, or re-create a tag that has been pushed. Consumers and caches may already depend on it. If a release is broken, ship the next patch version.
 - Tag the commit that actually contains the version bump and the changelog.
@@ -101,10 +101,11 @@ Use the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) layout unless t
 ## Release checklist
 
 - [ ] Release tooling checked (step 0); manual steps only if none exists.
+- [ ] Last stable or intentional pre-release base selected; unrelated pre-release tags excluded.
 - [ ] Bump matches what consumers can observe: breaking is MAJOR, additive is MINOR, fix is PATCH.
 - [ ] Version updated in its single source; lockfiles consistent.
 - [ ] Changelog entry curated, grouped, dated, with migration notes for breaking changes.
 - [ ] Project checks pass on the release commit.
 - [ ] Annotated tag in the project's format, on the release commit.
-- [ ] Release commit pushed to its branch, then only that tag; both with approval.
+- [ ] Release commit pushed to its branch, then only that tag; both with approval and non-interactive network settings.
 - [ ] Reported: version, tag, commit hash, and what was pushed.

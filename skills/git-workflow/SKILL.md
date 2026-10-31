@@ -15,16 +15,16 @@ Git is the user's safety net. Keep history clean and reviewable, and never destr
 
 ## Safety rules (non-negotiable)
 
-1. **Ask before recording, rewriting, or moving work.** Never commit, amend, merge, pull, rebase, cherry-pick, revert, stash, tag, push, delete a branch, or run a `reset` that moves a branch without the user's explicit approval in this conversation. Propose first (see "Commit proposal"), then wait. Approving a plan covers exactly the actions in that plan. "Implement X" is not approval to commit X; for requests like "commit everything", see "Commits". Read-only commands (`status`, `diff`, `log`, `show`), `git fetch`, and staging your own changes need no approval; creating a branch or worktree belongs in the plan you propose.
-2. **Never discard work without confirmation.** Anything that overwrites or deletes uncommitted changes, untracked files, stashes, branches, tags, the reflog, or remote refs can lose data: `reset --hard`, `checkout -- <path>`, `checkout .`, `restore <path>` (without `--staged`), `checkout -f`, `switch --discard-changes`, `clean -f`, `stash drop`/`clear`, `branch -D`, `worktree remove --force` (except on a throwaway worktree you created for checks), `push --delete`, `reflog expire`, `gc --prune=now`, and the others listed in [references/recovery.md](references/recovery.md). Before any of them, show what would be lost and offer a reversible alternative from that file.
+1. **Ask before recording, rewriting, or moving work.** Never commit, amend, merge, pull, rebase, cherry-pick, revert, stash, tag, push, delete a branch, remove a worktree, or run a `reset` that moves a branch without the user's explicit approval in this conversation. Propose first (see "Commit proposal"), then wait. Approving a plan covers exactly the actions in that plan. "Implement X" is not approval to commit X; for requests like "commit everything", see "Commits". Read-only commands (`status`, `diff`, `log`, `show`), `git fetch`, and staging your own changes need no approval; creating a branch or worktree belongs in the plan you propose.
+2. **Never discard work without confirmation.** Anything that overwrites or deletes uncommitted changes, untracked or ignored files, stashes, branches, tags, the reflog, or remote refs can lose data: `reset --hard`, `checkout -- <path>`, `checkout .`, `restore <path>` (without `--staged`), `checkout -f`, `switch --discard-changes`, `clean -f`, `stash drop`/`clear`, `branch -D`, any `worktree remove` when that worktree has ignored files, `worktree remove --force` (except on a throwaway worktree you created for checks), `push --delete`, `reflog expire`, `gc --prune=now`, and the others listed in [references/recovery.md](references/recovery.md). Before any of them, show what would be lost and offer a reversible alternative from that file.
 3. **Never force-push with `--force`, `-f`, or a `+<refspec>`.** Only the lease forms in "Pushing" are allowed, and only with approval. On the default branch or a shared branch, only when the user explicitly asks, after the backup-and-confirm steps there.
 4. **Never bypass hooks** unless the user asks: no `--no-verify`, no `git commit -n`, no `-c core.hooksPath=...`, no `HUSKY=0`, `SKIP=...`, or `LEFTHOOK=0`, and no editing or deleting hook files. When a hook fails, follow "When a hook fails".
-5. **Never change git config** (identity, editor, credentials, signing, hooks, `core.*`, `rerere`) unless asked, and don't override those settings for a single command with `-c`, environment variables, `--no-gpg-sign`, or `--author`. Two exceptions: the prompt-suppressing settings in rule 6, and the upstream that `git push -u` records.
-6. **Never run interactive commands.** They hang agents. Avoid `rebase -i`, `add -i`/`-p`/`-e`, `checkout -p`, `restore -p`, `reset -p`, `stash -p`, `clean -i`, `mergetool`, `difftool`, `git help` or `--help` (use `-h`), `commit` or `tag -a` without `-m`/`-F`, and anything else that opens an editor or pager. Instead use:
+5. **Never change git config** (identity, editor, credentials, signing, hooks, `core.*`, `rerere`) unless asked, and don't override those settings for a single command with `-c`, environment variables, `--no-gpg-sign`, or `--author`. Exceptions: rule 6's prompt-suppressing environment and `GIT_SEQUENCE_EDITOR=true` for the non-interactive autosquash recipe; the upstream that `git push -u` records is also allowed.
+6. **Never run interactive commands.** They hang agents. Avoid `add -i`/`-p`/`-e`, `checkout -p`, `restore -p`, `reset -p`, `stash -p`, `clean -i`, `mergetool`, `difftool`, `git help` or `--help` (use `-h`), `commit` or `tag -a` without `-m`/`-F`, and interactive rebase. The one allowed `rebase -i` is the scripted autosquash in [references/recovery.md](references/recovery.md), with `GIT_SEQUENCE_EDITOR=true` so no editor opens. Instead use:
    - `git --no-pager` for anything that prints history, diffs, or lists;
    - `git commit -F <file>` for messages, and `--no-edit` on `merge`, `pull`, `revert`, and `commit --amend` when the default message is right;
    - `GIT_EDITOR=true` in front of any `--continue` (`git rebase --continue` opens an editor even without a terminal);
-   - `GIT_TERMINAL_PROMPT=0` in front of network commands (`fetch`, `pull`, `push`, `ls-remote`), so a credential prompt fails instead of hanging.
+   - `GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=0` in front of every network command (`fetch`, `pull`, `push`, `ls-remote`), so Git and Git Credential Manager fail instead of prompting. For an SSH remote, also set `GIT_SSH_COMMAND='ssh -o BatchMode=yes'`; if `core.sshCommand` is configured, append `-o BatchMode=yes` to that command instead of replacing it.
 7. **Never commit secrets or junk.** Watch for `.env*`, keys (`*.pem`, `*.key`, `id_*`), credential files, tokens, build output, dependency folders, and large binaries the project does not track. Never force-add an ignored file (`git add -f`). Check file names before printing contents, and never repeat a secret's value: name the file and the key. If a secret shows up, stop and tell the user. If it was already committed, see [references/recovery.md](references/recovery.md).
 8. **Stage deliberately.** Prefer `git add -- <paths>` after reviewing `git status`. An untracked directory shows up as one entry and can hide a `.env`; list it with `git status --short -uall -- <dir>` before adding it. Use `git add -A`, `git add .`, or `git commit -a` only when the status shows exactly what you intend to commit.
 9. **Leave other people's changes alone.** Changes that existed before you started, staged or not, belong to the user. Don't stage, unstage, stash, or discard them without asking; point them out.
@@ -33,19 +33,22 @@ Repo conventions (message style, language, scopes, branch names, merge policy) o
 
 ## Orient first (read-only, no approval needed)
 
+Run Git workflows from the repository root. Resolve it with `git rev-parse --show-toplevel`, then use that path as the working directory for every recipe; some pathspec and patch commands can silently do nothing from a subdirectory.
+
 Run this before your first git write, and ideally before your first edit:
 
 ```bash
-git status                           # branch, upstream, operation in progress, changed and untracked files
-git --no-pager diff --stat
-git --no-pager diff --staged --stat
-git --no-pager log --oneline -10     # fails harmlessly in a repo with no commits yet
+git --version
+git status --untracked-files=all          # branch, upstream, operation, changed and untracked files
+git --no-pager diff --stat --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short
+git --no-pager diff --staged --stat --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short
+git --no-pager log --oneline -10          # fails harmlessly in a repo with no commits yet
 git --no-pager stash list
 ```
 
 Check for:
 
-- **Branch:** on the default branch? `git symbolic-ref --quiet --short refs/remotes/origin/HEAD` prints something like `origin/main`; the default branch is the part after `origin/`. If it prints nothing, try `git ls-remote --symref origin HEAD`, then look for `main` or `master`, or ask. Propose a feature branch instead of committing there. A new repository's first commits are the exception; say so in the proposal.
+- **Branch:** on the default branch? `git symbolic-ref --quiet --short refs/remotes/origin/HEAD` prints something like `origin/main`; the default branch is the part after `origin/`. If it prints nothing, try `git ls-remote --symref origin HEAD` with rule 6's non-interactive network environment, then look for `main` or `master`, or ask. Propose a feature branch instead of committing there. A new repository's first commits are the exception; say so in the proposal.
 - **Operation in progress:** plain `git status` names a merge, rebase, cherry-pick, revert, or bisect; `git status --short` does not. If you didn't start it, stop and ask.
 - **Detached HEAD:** don't commit until you know why.
 - **Pre-existing changes:** anything modified before your work started belongs to the user (rule 9). If you get here after editing, changes in files you never touched are the user's, and a file you edited that also has changes you don't recognize needs a question.
@@ -60,12 +63,12 @@ Check for:
 
 ### Before proposing a commit
 
-1. **Run the project's own checks.** Look in `Makefile`, `package.json` scripts, `pyproject.toml`/`tox.ini`, `Cargo.toml`, `go.mod`, `.pre-commit-config.yaml`, and CI workflow files. Use check-only modes (no `--fix`, `--write`, or snapshot updates), then run `git status` again: if a check changed files, review those changes before staging them. If a check can't run, say so in the proposal.
-2. **Stage and review the exact diff:** `git --no-pager diff --staged --stat` first, then `git --no-pager diff --staged` for the files that are safe to print.
+1. **Run the project's own checks.** Look in `Makefile`, `package.json` scripts, `pyproject.toml`/`tox.ini`, `Cargo.toml`, `go.mod`, `.pre-commit-config.yaml`, and CI workflow files. Use check-only modes (no `--fix`, `--write`, or snapshot updates), then run `git status --untracked-files=all` again: if a check changed files, review those changes before staging them. If a check can't run, say so in the proposal.
+2. **Stage and review the exact diff:** use `git --no-pager diff --staged --stat --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short` first, then the same raw flags without `--stat` for files that are safe to print. This prevents external diff, textconv, or submodule diff configuration from hiding or transforming staged objects.
 3. **Scan the staged diff for secrets.** This prints file names only and catches common token formats, not every secret:
 
    ```bash
-   git --no-pager diff --staged --name-only -G'-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|xox[abposr]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{32,}'
+   git --no-pager diff --staged --name-only --text --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short -G'-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|xox[abposr]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{32,}'
    ```
 
    If the repo configures a secret scanner, or `gitleaks` is installed, run it as well (`gitleaks git --pre-commit --staged --redact`). Any hit: stop (rule 7).
@@ -128,25 +131,26 @@ Message:
 Left out: README.md (edited before I started; not part of this change)
 ```
 
-After committing, confirm with `git --no-pager log -1 --stat` and `git status --short`.
+After committing, confirm with `git --no-pager log -1 --stat` and `git status --untracked-files=all`, which also exposes an unfinished operation.
 
 ### When a hook fails
 
-A failed `pre-commit` or `commit-msg` hook means the commit did not happen. Read the output, then:
+A failed `pre-commit` or `commit-msg` hook means the attempted commit did not happen. First verify that `HEAD` is unchanged, then:
 
-- **The hook reformatted or fixed files:** review its changes with `git --no-pager diff`, stage the fixes that belong to this commit (only this commit's hunks, if a file has other changes too), and commit again with the approved message. Mention it in the report.
-- **The hook rejected the message:** fix the message, commit again, and mention the change in the report.
+- **A normal commit failed:** never answer by amending; that would rewrite the previous real commit. Review any hook edits, restage only this commit's files, and retry a new commit with the approved message.
+- **An approved amendment failed:** do not create a new commit. After proving `HEAD` is unchanged, review any hook edits and retry the same amendment (`--amend`) under the existing approval.
+- **The hook rejected the message:** fix the message in the same operation (new commit or amendment), retry, and report the change.
 - **Passing needs code changes:** make them only if they're within the task, then show the new staged diff and ask again.
-- **The failure is unrelated to your change, or the hook needs a tool that's missing:** stop and ask.
+- **The failure is unrelated, or the hook needs a missing tool:** stop and ask.
 
-Never answer a failed hook with `--amend`: the commit didn't happen, so amending would rewrite the previous commit.
+Never use `--no-verify`. Distinguish a failed new commit from a failed amendment before choosing the retry command.
 
 ## Branches
 
 - Don't commit on the default branch unless the user asks ("Orient first" shows how to find it).
 - **Naming:** `<type>/<short-kebab-description>`, for example `feat/csv-import` or `fix/token-expiry`, unless the repo does it differently.
-- **Keep branches short-lived and in sync.** `git fetch` needs no approval; updating your branch does. Prefer `git pull --ff-only`. If it can't fast-forward, show `git --no-pager log --oneline --left-right HEAD...@{u}` and propose a rebase or a merge.
-- **Rebase vs merge:** follow the repo's policy. Without one, rebase only local, unpushed branches, and merge anything already pushed or shared. Rewriting pushed history needs explicit approval.
+- **Keep branches short-lived and in sync.** Fetching needs no approval; updating your branch does. Prefer `git fetch origin`, then, with approval, `git merge --ff-only --no-overwrite-ignore @{u}`. This gives `pull --ff-only` behavior while refusing to overwrite ignored local files. If it can't fast-forward, show `git --no-pager log --oneline --left-right HEAD...@{u}` and propose a rebase or a merge.
+- **Rebase vs merge:** follow the repo's policy. Without one, rebase only local, unpushed branches, and merge anything already pushed or shared. Use `--no-overwrite-ignore` with `git switch` and `git merge`; ignored files are not protected by the usual snapshot/stash and the default switch/merge behavior can replace them. Rewriting pushed history needs explicit approval.
 - **Deleting a branch** needs approval. Use `git branch -d`, which refuses unmerged branches; `-D` throws away unmerged commits, so show them first (`git --no-pager log --oneline <default>..<branch>`) and get the user's OK for that loss.
 
 ## Worktrees (parallel work)
@@ -154,22 +158,27 @@ Never answer a failed hook with `--amend`: the commit didn't happen, so amending
 - Check whether you're already isolated: if `git rev-parse --absolute-git-dir` and `git rev-parse --path-format=absolute --git-common-dir` print different paths, you're in a linked worktree. If your harness provides worktrees natively, use those.
 - **Create:** `git worktree add -b <branch> <path> <base>`. The usual path is a sibling directory, `../<repo>-<branch>`, with any `/` in the branch name replaced by `-`. It lives outside the repo, so name it in your proposal.
 - **List:** `git worktree list`.
-- **Remove:** `git worktree remove <path>` refuses when the worktree has modified or untracked files. `--force` requires approval, except on a throwaway worktree you created yourself for checks (see [references/splitting-changes.md](references/splitting-changes.md)).
+- **Remove:** removal needs approval. First run `git -C <path> status --short --ignored -uall`: plain `git worktree remove <path>` refuses modified or untracked files but silently deletes ignored files, including `.env`. Show any `!!` entries and confirm their loss; then remove. `--force` requires confirmation, except on a throwaway worktree you created yourself for checks (see [references/splitting-changes.md](references/splitting-changes.md)).
 - One agent per worktree. Two agents must never edit the same worktree.
 
 ## Pushing
 
-- Push only with approval, with `GIT_TERMINAL_PROMPT=0` in front (rule 6). First push of a branch: `git push -u origin <branch>`.
+- Push only with approval, rule 6's non-interactive network environment, a named remote, and one explicit destination. First push: `git push -u origin HEAD:refs/heads/<branch>`.
 - Never push directly to the default branch unless asked.
 - A failed `pre-push` hook means nothing was pushed; handle it like a failed commit hook.
-- **Rejected push** ("non-fast-forward", "fetch first"): never answer with force. Run `git fetch`, show the divergence with `git --no-pager log --oneline --left-right HEAD...origin/<branch>`, and propose a rebase or a merge.
-- **Force push**, only in these forms:
-  - Your own branch, after an approved rebase: `git push --force-with-lease --force-if-includes` (git 2.30+). The second flag rejects the push when the remote has commits that never made it into your branch, which a background fetch would otherwise hide from the lease.
+- **Rejected push** ("non-fast-forward", "fetch first"): never answer with force. Run `git fetch origin <branch>`, show the divergence with `git --no-pager log --oneline --left-right HEAD...origin/<branch>`, and propose a rebase or a merge.
+- **Force push**, only with an exact lease, one remote, and one destination:
+  - Your own branch, after an approved rebase:
+    1. Fetch `origin <branch>` and record `remote_tip=$(git rev-parse origin/<branch>)`.
+    2. Prove that remote tip was integrated before the rewrite. If it is not an ancestor of current `HEAD`, inspect the branch reflog and require `git merge-base --is-ancestor "$remote_tip" <old-branch-tip>` to succeed for at least one pre-rewrite tip. If the reflog cannot prove this, stop and integrate the remote branch instead of pushing.
+    3. Push exactly one ref: `git push --force-with-lease=refs/heads/<branch>:<remote-tip-oid> origin HEAD:refs/heads/<branch>`.
+
+    An explicit expected OID disables the protection normally added by `--force-if-includes`, so the ancestry/reflog proof is mandatory. The exact lease still fails if the remote moves after the fetch. Never omit the remote or refspec: configured wildcard push refspecs could rewrite other branches.
   - Default or shared branch, only at the user's explicit request:
-    1. Run `git fetch origin` and show what would disappear: `git --no-pager log --oneline <branch>..origin/<branch>`.
-    2. Back it up: `git branch --no-track backup/<branch>-remote-<yyyymmdd> origin/<branch>`.
-    3. Get a second, explicit OK for exactly that loss.
-    4. Push with an exact lease on the tip you showed: `git push --force-with-lease=<branch>:<sha> origin <branch>`, where `<sha>` is `git rev-parse origin/<branch>` from step 1. If the remote moved in the meantime, the push fails; start over at step 1.
+    1. Fetch `origin <branch>`, record its full OID, and show what would disappear: `git --no-pager log --oneline <branch>..origin/<branch>`.
+    2. Back up the reviewed tip under an OID-derived name such as `backup/<branch>-remote-<short-oid>`. If that ref exists, verify it already equals the full reviewed OID; otherwise create it with `git branch --no-track <backup> <full-oid>` and verify creation succeeded.
+    3. Get a second, explicit OK for exactly the commits shown.
+    4. Push one ref with the reviewed exact lease: `git push --force-with-lease=refs/heads/<branch>:<full-oid> origin HEAD:refs/heads/<branch>`. If the remote moved, the push fails; start over at step 1.
   - The host's branch protection may still refuse. Report it; don't work around it.
 - Pull requests, CI, and the `gh` CLI are out of scope for this skill.
 
@@ -192,13 +201,13 @@ When you finish, report:
 - **Concerns:** assumptions the user should confirm.
 - **Git state:** branch, commits created (short hash and header), what was pushed, what remains uncommitted or staged, and any backup branches, snapshots, or stashes you created.
 
-Report only what you verified. Don't claim tests passed, a commit exists, or a push happened without checking (`git --no-pager log -1`, `git status`, `git --no-pager log -1 origin/<branch>`).
+Report only what you verified. Don't claim tests passed, a commit exists, or a push happened without checking (`git --no-pager log -1`, `git status --untracked-files=all`, `git --no-pager log -1 origin/<branch>`).
 
 ## Stop and ask when
 
 - You're on the default branch with changes to commit.
 - The tree has changes you didn't make.
-- A command would delete untracked files, discard changes, or rewrite pushed history.
+- A command would delete untracked or ignored files, discard changes, or rewrite pushed history.
 - A hook or check fails and the fix is outside the task.
 - A secret, credential, or large binary appears in a diff.
 - You find a detached HEAD or an unfinished operation you didn't start.

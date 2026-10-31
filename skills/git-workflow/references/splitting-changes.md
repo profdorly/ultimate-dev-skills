@@ -1,31 +1,24 @@
 # Splitting a messy working tree into atomic commits
 
-Goal: turn a tree with mixed changes into a sequence of clean, atomic commits without interactive staging and without losing anything.
+Goal: turn a tree with mixed changes into a sequence of clean, atomic commits without interactive staging and without losing anything. Work from the repository root (SKILL.md, "Orient first").
 
 Shell variables usually don't survive between an agent's tool calls, so the steps print IDs for you to note and reuse literally. Temporary files go in `${TMPDIR:-/tmp}`.
 
 ## 1. Snapshot first (no history writes)
 
-Take a snapshot of the working tree, the same recipe as in [recovery.md](recovery.md#protect-first). It includes untracked files and touches neither the index nor your files. Note the tree ID it prints as SNAP:
-
-```bash
-idx="${TMPDIR:-/tmp}/git-snapshot-$$.index"
-cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null || rm -f "$idx"
-GIT_INDEX_FILE="$idx" git add -A && GIT_INDEX_FILE="$idx" git write-tree
-rm -f "$idx"
-```
+Take a Git-normalized snapshot plus the exact index backup from [recovery.md](recovery.md#protect-first). Record both SNAP and INDEX_BACKUP; the latter preserves the user's distinct staged layer before step 4 unstages anything. Keep it until the whole split is verified. SNAP excludes ignored files and dirty/untracked submodule contents, and filters or line-ending conversion mean equal tree IDs prove equal normalized Git content, not byte-identical files. If those distinctions matter, make the raw filesystem backup described in `recovery.md` too.
 
 - Note the current commit as BASE: `git rev-parse --verify --quiet HEAD || echo "no commits yet"`.
-- Ignored files aren't in the snapshot. Staging never deletes them, but don't run `git clean` or `stash -u` on them without asking.
+- The normalized snapshot does not protect ignored files. Don't run `git clean`, remove a worktree, or stash with `--all` without showing them and asking.
 - If something was already staged before you started, the user may have staged it on purpose (SKILL.md, rule 9). Ask before unstaging it.
 
 ## 2. Inventory and group by intent
 
 ```bash
 git status --short -uall
-git --no-pager diff --stat
-git --no-pager diff --staged --stat
-git --no-pager diff -- <file>      # one file at a time; never print .env*, keys, or credential files
+git --no-pager diff --stat --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short
+git --no-pager diff --staged --stat --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short
+git --no-pager diff --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short -- <file>  # never print secrets
 ```
 
 Group hunks by intent, not by file. One file can hold hunks for two different commits. Typical groups:
@@ -71,15 +64,26 @@ Without a commit argument, `git reset` only unstages. It doesn't move the branch
 git add -- internal/tasks/validator.go internal/tasks/validator_test.go
 ```
 
-**Part of a file.** Without `add -p`, build a patch that contains only the hunks you want and apply it to the index. The extra flags keep user config out of the way: colors, external diff tools, and `diff.noprefix` would break the patch, and `apply.whitespace` could reject it or silently change what gets staged.
+**Part of a file.** Without `add -p`, build a patch that contains only the hunks you want and apply it to the index. The flags make the patch independent of the user's diff configuration: color, external diff tools, relative paths, textconv, custom prefixes, and whitespace handling can otherwise corrupt it or make it silently skip paths.
 
 ```bash
-git --no-pager diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -- internal/tasks/service.go > "${TMPDIR:-/tmp}/service-full.patch"
-# Copy it to service-part.patch and cut the copy down (rules below).
-git apply --cached --recount --whitespace=nowarn --check "${TMPDIR:-/tmp}/service-part.patch"   # dry run
-git apply --cached --recount --whitespace=nowarn "${TMPDIR:-/tmp}/service-part.patch"
-git --no-pager diff --staged -- internal/tasks/service.go                                      # verify
+split_tmp=$(mktemp -d "${TMPDIR:-/tmp}/git-split.XXXXXX") || exit 1
+printf 'split temp: %s\n' "$split_tmp"   # record this literal path; variables may not survive the next tool call
+git --no-pager diff --no-color --no-ext-diff --no-relative --no-textconv --ignore-submodules=none --submodule=short \
+  --src-prefix=a/ --dst-prefix=b/ -- internal/tasks/service.go > "$split_tmp/service-full.patch"
+cp "$split_tmp/service-full.patch" "$split_tmp/service-part.patch"
+# Cut service-part.patch down (rules below).
+git apply --cached --recount --whitespace=nowarn --check "$split_tmp/service-part.patch"   # dry run
+git apply --cached --recount --whitespace=nowarn "$split_tmp/service-part.patch"
+git --no-pager diff --staged --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short -- internal/tasks/service.go
+if git diff --staged --quiet --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short -- internal/tasks/service.go; then
+  echo "ERROR: nothing was staged"; exit 1
+else
+  rc=$?; [ "$rc" -eq 1 ] || { echo "ERROR: staged diff check failed"; exit "$rc"; }
+fi
 ```
+
+Run these commands from the repository root. `git apply --cached` can exit successfully while silently ignoring patch paths outside the current subdirectory; an empty staged diff is therefore a failure.
 
 Cutting the patch down:
 
@@ -98,26 +102,35 @@ Commit with the approved message (`git commit -F -` with a heredoc; see [convent
 The working tree still holds all the other changes, so running tests there checks everything, not the commit alone. To check a single commit in isolation, use a throwaway worktree:
 
 ```bash
-git worktree add --detach "${TMPDIR:-/tmp}/verify-<short-sha>" HEAD
-( cd "${TMPDIR:-/tmp}/verify-<short-sha>" && <install deps if needed> && <project checks> )
-git worktree remove "${TMPDIR:-/tmp}/verify-<short-sha>"
+verify_tmp=$(mktemp -d "${TMPDIR:-/tmp}/git-verify.XXXXXX") || exit 1
+printf 'verify temp: %s\n' "$verify_tmp"   # record it if checks run in later tool calls
+verify_wt="$verify_tmp/worktree"
+if ! git worktree add --detach "$verify_wt" HEAD; then rmdir "$verify_tmp"; exit 1; fi
+check_rc=0
+( cd "$verify_wt" && <install deps if needed> && <project checks> ) || check_rc=$?
+cleanup_rc=0
+git worktree remove --force "$verify_wt" || cleanup_rc=$?
+[ "$cleanup_rc" -ne 0 ] || rmdir "$verify_tmp" || cleanup_rc=$?
+[ "$check_rc" -eq 0 ] || { echo "ERROR: isolated checks failed ($check_rc)"; exit "$check_rc"; }
+[ "$cleanup_rc" -eq 0 ] || { echo "ERROR: verification cleanup failed ($cleanup_rc)"; exit "$cleanup_rc"; }
 ```
 
-If the checks left untracked files there, `remove` refuses. You created this worktree and it holds nothing but check output, so `git worktree remove --force` is fine here, and only here.
+You created this worktree only for checks, so forcing its removal, including generated or ignored check output, is allowed here. Never apply that exception to a user's worktree.
 
-If a commit fails in isolation, it depends on something from a later group. Report it and propose a fix before continuing: reorder or merge groups, or fix the unpushed commit (with approval; see "Fix an older commit" in [recovery.md](recovery.md)).
+If a commit fails in isolation, it depends on something from a later group. Report it and propose a fix: reorder or merge groups. Do not start the fixup/rebase recipe while later groups are still in the working tree; rebase refuses a dirty tree and would leave a stray `fixup!` commit. Finish the approved groups first, or take a snapshot and stash the remaining work with approval, then follow "Fix an older local commit" in [recovery.md](recovery.md).
 
 ## 6. Prove nothing was lost
 
-Take a second snapshot with the same recipe and compare its tree ID with SNAP:
+Take a second Git-normalized snapshot with the same recipe and compare its tree ID with SNAP:
 
-- Same ID: the working tree is exactly as it was, untracked files included.
-- Different: `git --no-pager diff --stat <SNAP> <new-tree>` shows what changed. Stop and investigate before doing anything else. If you changed `.gitignore` in between, files it now ignores show up as deleted; check that they're still on disk.
+- Same ID: tracked and non-ignored untracked content is equivalent after Git's clean filters and line-ending normalization.
+- Different: `git --no-pager diff --stat --no-ext-diff --no-textconv --ignore-submodules=none --submodule=short <SNAP> <new-tree>` shows normalized changes. Stop and investigate. If `.gitignore` changed, newly ignored files appear deleted from the snapshot even when still on disk.
+- If you made the raw filesystem backup recommended in step 1, compare it as well before deleting it; that is the check for exact bytes, ignored files, and nested submodule work.
 
-Then check `git status`: whatever you left out of the plan should still be there, unstaged.
+Then run `git status --untracked-files=all`: whatever you left out of the plan should still be there, unstaged, and no operation should be in progress. Report the unique temporary paths you created; remove only paths from this invocation after their purpose is complete.
 
 ## If something goes wrong
 
 - A wrong hunk got staged: `git restore --staged -- <file>` (before the first commit: `git reset -q -- <file>`), then redo that file.
-- A commit is wrong and not pushed: with approval, `git reset --soft HEAD~1`, then restage. The changes stay in the tree.
+- A commit is wrong and not pushed: with approval, use `git reset --soft HEAD~1`; if it is the first commit, use `git update-ref -d HEAD`. Both keep the changes staged for restaging.
 - A file in the tree looks wrong: stop and tell the user. `git restore --source=<SNAP> --worktree -- <path>` puts back its snapshot version.
